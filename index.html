@@ -1974,7 +1974,8 @@ function renderMangaCard(id){
 
 function renderVolumePanel(manga, exemplares){
   if (volumeFormTarget === undefined) volumeFormTarget = null;
-  if (exemplares.length === 0 && volumeFormTarget === null) volumeFormTarget = "new";
+  if (logado && exemplares.length === 0 && volumeFormTarget === null) volumeFormTarget = "new";
+  if (!logado) volumeFormTarget = null;
 
   let html = `<div class="vol-panel">`;
   html += `<div class="vol-panel-head"><div class="vol-panel-title">Volume ${activeVolume}</div>
@@ -1990,17 +1991,19 @@ function renderVolumePanel(manga, exemplares){
     for (const ex of exemplares){
       html += `<div class="vol-row mono">
         <div>${ex.preco?`R$ ${Number(ex.preco).toFixed(2)}`:"sem preço"}${ex.variante?` · ${esc(ex.variante)}`:""}${ex.obs?` · ${esc(ex.obs)}`:""}</div>
-        <div style="flex-shrink:0; white-space:nowrap;">
+        ${logado ? `<div style="flex-shrink:0; white-space:nowrap;">
           <button type="button" class="small-btn" data-edit-ex="${ex.id}">Editar</button>
           <button type="button" class="small-btn danger" data-del-ex="${ex.id}">Excluir</button>
-        </div>
+        </div>` : ""}
       </div>`;
     }
-    html += `<button type="button" class="small-btn block mono" id="volPanelNew">+ Adicionar outro exemplar deste volume</button>`;
+    if (logado) html += `<button type="button" class="small-btn block mono" id="volPanelNew">+ Adicionar outro exemplar deste volume</button>`;
     html += `</div>`;
+  } else if (exemplares.length === 0 && !logado) {
+    html += `<div class="empty mono" style="padding:8px 0;">Nenhum exemplar cadastrado.</div>`;
   }
 
-  if (volumeFormTarget !== null){
+  if (logado && volumeFormTarget !== null){
     let ex = null;
     if (volumeFormTarget !== "new") ex = exemplares.find(e=>e.id===volumeFormTarget) || null;
     const precoRef = manga.precosRef && manga.precosRef[activeVolume];
@@ -2187,7 +2190,6 @@ function wireMangaCardBack(){
   });
   document.querySelectorAll("[data-vol]").forEach(btn=>{
     btn.addEventListener("click", ()=>{
-      if (!logado) { mostrarLogin(); return; }
       const n = Number(btn.dataset.vol);
       activeVolume = (activeVolume===n) ? null : n;
       volumeFormTarget = null;
