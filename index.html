@@ -78,7 +78,7 @@
   .eyebrow { font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); font-weight: 600; }
   h1 { font-size: 29px; margin: 3px 0 5px; letter-spacing: -0.01em; font-weight: 700; }
   .subhead { font-size: 11px; color: var(--ink-soft); opacity: 0.75; }
-  .tabs { display: flex; gap: 4px; overflow-x: auto; align-items: flex-end; scrollbar-width: none; padding-bottom: 1px; }
+  .tabs { display: flex; gap: 4px; align-items: flex-end; padding-bottom: 1px; }
   .tabs::-webkit-scrollbar { display: none; }
   .tab {
     font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
@@ -92,6 +92,18 @@
     background: var(--paper); color: var(--ink); font-weight: 700; top: 0;
     border-top: 2px solid var(--wine); border-bottom: 1px solid var(--paper);
   }
+  .dropdown {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 20;
+    background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-m);
+    box-shadow: var(--shadow-3); min-width: 190px; padding: 6px; overflow: hidden;
+  }
+  .dropdown-item {
+    display: block; width: 100%; text-align: left; background: none; border: none; color: var(--ink);
+    font-size: 12px; letter-spacing: 0.02em; padding: 10px 10px; cursor: pointer; border-radius: var(--radius-s);
+    transition: background 0.12s ease;
+  }
+  .dropdown-item:hover { background: var(--wine-wash); }
+  .dropdown-sep { height: 1px; background: var(--line); margin: 5px 2px; }
   .panel {
     background: var(--paper); border: 1px solid var(--line); border-radius: 0 var(--radius-m) var(--radius-m) var(--radius-m);
     padding: 18px 16px; box-shadow: var(--shadow-2);
@@ -210,12 +222,18 @@
 
   <div class="tabs" id="tabsBar">
     <button class="tab mono active" data-tab="acervo">Acervo</button>
-    <button class="tab mono" data-tab="manga">+ Cadastrar manga</button>
-    <button class="tab mono" data-tab="volume">+ Registrar volume</button>
-    <button class="tab mono" data-tab="stats">Estatísticas</button>
-    <button class="tab mono" data-tab="exportar">Exportar</button>
-    <button class="tab mono" id="loginBtn" style="margin-left:auto;">Entrar</button>
-    <button class="tab mono" id="themeBtn" title="Alternar tema">☾</button>
+    <div class="menu-wrap" style="margin-left:auto; position:relative; z-index:30;">
+      <button class="tab mono" id="menuBtn" title="Mais opções">☰</button>
+      <div class="dropdown mono" id="menuDropdown" style="display:none;">
+        <button class="dropdown-item" data-tab="manga">+ Cadastrar manga</button>
+        <button class="dropdown-item" data-tab="volume">+ Registrar volume</button>
+        <button class="dropdown-item" data-tab="stats">Estatísticas</button>
+        <button class="dropdown-item" data-tab="exportar">Exportar / Importar</button>
+        <div class="dropdown-sep"></div>
+        <button class="dropdown-item" id="loginBtn">Entrar</button>
+        <button class="dropdown-item" id="themeBtn">🌙 Tema noturno</button>
+      </div>
+    </div>
   </div>
 
   <div class="panel" id="panel"></div>
@@ -1718,10 +1736,22 @@ function updateStats(){
 function setTab(t){
   if (!logado && t !== "acervo") { mostrarLogin(); return; }
   tab = t; selectedId = null; activeVolume = null; volumeFormTarget = null; editingManga = false;
-  document.querySelectorAll(".tab[data-tab]").forEach(b=>b.classList.toggle("active", b.dataset.tab===t));
+  document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active", b.dataset.tab===t));
+  fecharMenu();
   render();
 }
-document.querySelectorAll(".tab[data-tab]").forEach(b=>b.addEventListener("click", ()=>setTab(b.dataset.tab)));
+document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click", ()=>setTab(b.dataset.tab)));
+
+function fecharMenu(){ document.getElementById("menuDropdown").style.display = "none"; }
+document.getElementById("menuBtn").addEventListener("click", (e)=>{
+  e.stopPropagation();
+  const dd = document.getElementById("menuDropdown");
+  dd.style.display = dd.style.display === "none" ? "block" : "none";
+});
+document.addEventListener("click", (e)=>{
+  const wrap = document.querySelector(".menu-wrap");
+  if (wrap && !wrap.contains(e.target)) fecharMenu();
+});
 
 // Modo edição: sem login, só a aba Acervo fica disponível (as outras ficam
 // escondidas). Isso é só uma conveniência de navegação para quem só vai olhar
@@ -1731,13 +1761,13 @@ const SENHA_EDICAO = "manga2026";
 let logado = sessionStorage.getItem("acervo_logado") === "1";
 
 function atualizarBarraTabs(){
-  document.querySelectorAll('.tab[data-tab]').forEach(b=>{
-    const restrita = b.dataset.tab !== "acervo";
-    b.style.display = (restrita && !logado) ? "none" : "";
+  document.querySelectorAll('.dropdown-item[data-tab]').forEach(b=>{
+    b.style.display = logado ? "" : "none";
   });
   document.getElementById("loginBtn").textContent = logado ? "Sair" : "Entrar";
 }
 function mostrarLogin(){
+  fecharMenu();
   const senha = prompt("Senha para editar:");
   if (senha === null) return;
   if (senha === SENHA_EDICAO) {
@@ -1755,6 +1785,7 @@ document.getElementById("loginBtn").addEventListener("click", ()=>{
     sessionStorage.removeItem("acervo_logado");
     if (tab !== "acervo") setTab("acervo");
     atualizarBarraTabs();
+    fecharMenu();
     showToast("Saiu do modo edição.");
   } else {
     mostrarLogin();
@@ -1766,13 +1797,14 @@ if (!logado && tab !== "acervo") tab = "acervo";
 // Tema claro/escuro: preferência salva no aparelho.
 function aplicarTema(t){
   document.documentElement.setAttribute("data-theme", t);
-  document.getElementById("themeBtn").textContent = t === "dark" ? "☀️" : "🌙";
+  document.getElementById("themeBtn").textContent = t === "dark" ? "☀️ Tema claro" : "🌙 Tema noturno";
   localStorage.setItem("acervo_tema", t);
 }
 aplicarTema(localStorage.getItem("acervo_tema") || "light");
 document.getElementById("themeBtn").addEventListener("click", ()=>{
   const atual = document.documentElement.getAttribute("data-theme");
   aplicarTema(atual === "dark" ? "light" : "dark");
+  fecharMenu();
 });
 
 function render(){
