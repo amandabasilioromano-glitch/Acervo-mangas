@@ -69,7 +69,7 @@
   .stamp {
     width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
     font-size: 11px; border: 1.5px dashed #C9B98A; border-radius: 3px; color: #B7A87A;
-    background: transparent; cursor: pointer; padding: 0; overflow: hidden;
+    background: transparent; cursor: pointer; padding: 0; overflow: hidden; position: relative;
   }
   .stamp.filled { border: 1.5px solid #A13328; color: #A13328; background: rgba(161,51,40,0.08);
     font-weight: 700; transform: rotate(-3deg); }
@@ -77,6 +77,12 @@
   .stamp.has-cover { transform: none; }
   .stamp img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .stamp.has-cover:not(.filled) img { opacity: 0.32; filter: grayscale(65%); }
+  .stamp-num-overlay {
+    position: absolute; bottom: 1px; right: 1px; display: flex; align-items: center; justify-content: center;
+    min-width: 13px; height: 13px; padding: 0 2px; font-size: 9px; font-weight: 700; line-height: 1;
+    color: #fff; background: rgba(20,15,10,0.82); border-radius: 2px;
+    pointer-events: none;
+  }
   .stamp-grid { display: flex; flex-wrap: wrap; gap: 6px; }
   .cover-thumb { width: 40px; height: 56px; object-fit: cover; border-radius: 3px; border: 1px solid #C9B98A; flex-shrink: 0; }
   .cover-placeholder { width: 40px; height: 56px; border-radius: 3px; border: 1px dashed #C9B98A; flex-shrink: 0;
@@ -113,12 +119,13 @@
   <h1>Acervo de Mangás</h1>
   <div class="subhead mono" id="statsLine"></div>
 
-  <div class="tabs">
+  <div class="tabs" id="tabsBar">
     <button class="tab mono active" data-tab="acervo">Acervo</button>
     <button class="tab mono" data-tab="manga">+ Cadastrar manga</button>
     <button class="tab mono" data-tab="volume">+ Registrar volume</button>
     <button class="tab mono" data-tab="stats">Estatísticas</button>
     <button class="tab mono" data-tab="exportar">Exportar</button>
+    <button class="tab mono" id="loginBtn" style="margin-left:auto;">Entrar</button>
   </div>
 
   <div class="panel" id="panel"></div>
@@ -1567,11 +1574,52 @@ function updateStats(){
     catalogo.length + " títulos catalogados · " + volumes.length + " volumes registrados";
 }
 function setTab(t){
+  if (!logado && t !== "acervo") { mostrarLogin(); return; }
   tab = t; selectedId = null; activeVolume = null; volumeFormTarget = null; editingManga = false;
-  document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active", b.dataset.tab===t));
+  document.querySelectorAll(".tab[data-tab]").forEach(b=>b.classList.toggle("active", b.dataset.tab===t));
   render();
 }
-document.querySelectorAll(".tab").forEach(b=>b.addEventListener("click", ()=>setTab(b.dataset.tab)));
+document.querySelectorAll(".tab[data-tab]").forEach(b=>b.addEventListener("click", ()=>setTab(b.dataset.tab)));
+
+// Modo edição: sem login, só a aba Acervo fica disponível (as outras ficam
+// escondidas). Isso é só uma conveniência de navegação para quem só vai olhar
+// o acervo — não é uma proteção real dos dados, já que este app não tem servidor
+// e cada visitante só edita a própria cópia local, nunca os seus dados de verdade.
+const SENHA_EDICAO = "manga2026";
+let logado = sessionStorage.getItem("acervo_logado") === "1";
+
+function atualizarBarraTabs(){
+  document.querySelectorAll('.tab[data-tab]').forEach(b=>{
+    const restrita = b.dataset.tab !== "acervo";
+    b.style.display = (restrita && !logado) ? "none" : "";
+  });
+  document.getElementById("loginBtn").textContent = logado ? "Sair" : "Entrar";
+}
+function mostrarLogin(){
+  const senha = prompt("Senha para editar:");
+  if (senha === null) return;
+  if (senha === SENHA_EDICAO) {
+    logado = true;
+    sessionStorage.setItem("acervo_logado", "1");
+    atualizarBarraTabs();
+    showToast("Modo edição ativado.");
+  } else {
+    showToast("Senha incorreta.");
+  }
+}
+document.getElementById("loginBtn").addEventListener("click", ()=>{
+  if (logado) {
+    logado = false;
+    sessionStorage.removeItem("acervo_logado");
+    if (tab !== "acervo") setTab("acervo");
+    atualizarBarraTabs();
+    showToast("Saiu do modo edição.");
+  } else {
+    mostrarLogin();
+  }
+});
+atualizarBarraTabs();
+if (!logado && tab !== "acervo") tab = "acervo";
 
 function render(){
   updateStats();
@@ -1714,7 +1762,7 @@ function renderMangaCard(id){
     html += `<div class="stamp-grid">`;
     for (let n=1; n<=maxGrid; n++){
       const capaUrl = manga.capas && manga.capas[n];
-      const inner = capaUrl ? `<img src="${esc(capaUrl)}" alt="Capa do volume ${n}" loading="lazy">` : n;
+      const inner = capaUrl ? `<img src="${esc(capaUrl)}" alt="Capa do volume ${n}" loading="lazy"><span class="stamp-num-overlay">${n}</span>` : n;
       html += `<button type="button" class="stamp mono${ownedSet.has(n)?" filled":""}${activeVolume===n?" active":""}${capaUrl?" has-cover":""}" data-vol="${n}" title="Volume ${n}">${inner}</button>`;
     }
     html += `</div>`;
@@ -1946,9 +1994,13 @@ function wireMangaCardBack(){
   const b = document.getElementById("backBtn");
   if (b) b.addEventListener("click", ()=>{ selectedId=null; activeVolume=null; volumeFormTarget=null; editingManga=false; render(); });
   const editBtn = document.getElementById("editMangaBtn");
-  if (editBtn) editBtn.addEventListener("click", ()=>{ editingManga = !editingManga; render(); });
+  if (editBtn) editBtn.addEventListener("click", ()=>{
+    if (!logado) { mostrarLogin(); return; }
+    editingManga = !editingManga; render();
+  });
   document.querySelectorAll("[data-vol]").forEach(btn=>{
     btn.addEventListener("click", ()=>{
+      if (!logado) { mostrarLogin(); return; }
       const n = Number(btn.dataset.vol);
       activeVolume = (activeVolume===n) ? null : n;
       volumeFormTarget = null;
