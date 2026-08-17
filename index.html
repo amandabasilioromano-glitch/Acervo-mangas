@@ -211,6 +211,34 @@ const SEED_BUILD = "2026-08-17-03";
   localStorage.setItem("seedBuild", SEED_BUILD);
 })();
 
+// Fusão de títulos que na verdade são variantes de volumes de outro título
+// (ex: uma "edição especial" que reedita alguns volumes com capa diferente).
+// Move os volumes possuídos pro título principal marcados como variante, e
+// remove o título duplicado do catálogo. Roda uma vez só, controlado por flag.
+(function fundirVariantes(){
+  if (localStorage.getItem("mergeVariantsV1") === "1") { return; }
+  const fusoes = [
+    { de: 116, para: 117, rotulo: "Edição Especial" }, // Demon Slayer: Edição Especial → volumes do Demon Slayer (Manga)
+    { de: 80, para: 78, rotulo: "Capa variante" },      // Card Captor Sakura (capa variante) → volumes do Card Captor Sakura
+  ];
+  let mudou = false;
+  for (const f of fusoes) {
+    const idxOld = catalogo.findIndex(m => m.id === f.de);
+    if (idxOld === -1) continue;
+    volumes.forEach(v => {
+      if (v.mangaId === f.de) {
+        v.mangaId = f.para;
+        if (!v.variante) v.variante = f.rotulo;
+        mudou = true;
+      }
+    });
+    catalogo.splice(idxOld, 1);
+    mudou = true;
+  }
+  if (mudou) { saveCat(); saveVol(); }
+  localStorage.setItem("mergeVariantsV1", "1");
+})();
+
 let tab = "acervo";
 let selectedId = null;
 let activeVolume = null;      // número do volume cujo carimbo está aberto no cartão
