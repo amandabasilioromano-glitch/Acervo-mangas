@@ -136,6 +136,74 @@ let catalogo = JSON.parse(localStorage.getItem(STORE_KEY_CAT) || "null") || SEED
 let volumes = JSON.parse(localStorage.getItem(STORE_KEY_VOL) || "null") || SEED_VOLUMES;
 if (!localStorage.getItem(STORE_KEY_CAT)) localStorage.setItem(STORE_KEY_CAT, JSON.stringify(SEED_CATALOGO));
 if (!localStorage.getItem(STORE_KEY_VOL)) localStorage.setItem(STORE_KEY_VOL, JSON.stringify(SEED_VOLUMES));
+
+// Sincronização entre aparelhos: cada navegador guarda seus próprios dados
+// (localStorage é isolado por aparelho/navegador). Toda vez que este arquivo é
+// atualizado com títulos ou volumes novos (adicionados em outro aparelho), essa
+// rotina traz o que estiver faltando aqui — sem apagar nada que já esteja salvo
+// neste aparelho. Roda uma vez por versão do arquivo (controlado por SEED_BUILD).
+const SEED_BUILD = "2026-08-17-03";
+(function sincronizarComArquivo(){
+  if (localStorage.getItem("seedBuild") === SEED_BUILD) return;
+  let mudou = false;
+
+  const byId = {};
+  catalogo.forEach(m => { byId[m.id] = m; });
+
+  for (const seedM of SEED_CATALOGO) {
+    if (!byId[seedM.id]) {
+      // título novo que não existia neste aparelho
+      catalogo.push(seedM);
+      byId[seedM.id] = seedM;
+      mudou = true;
+    } else {
+      const local = byId[seedM.id];
+      if (seedM.capas) {
+        if (!local.capas) local.capas = {};
+        for (const v in seedM.capas) {
+          if (!local.capas[v]) { local.capas[v] = seedM.capas[v]; mudou = true; }
+        }
+      }
+      if (seedM.precosRef) {
+        if (!local.precosRef) local.precosRef = {};
+        for (const v in seedM.precosRef) {
+          if (local.precosRef[v] == null) { local.precosRef[v] = seedM.precosRef[v]; mudou = true; }
+        }
+      }
+      if (local.site == null && seedM.site) { local.site = seedM.site; mudou = true; }
+      if (local.volumesTotal == null && seedM.volumesTotal != null) { local.volumesTotal = seedM.volumesTotal; mudou = true; }
+    }
+  }
+
+  const chaveVol = v => `${v.mangaId}|${v.volume}|${v.variante||""}`;
+  const chavesLocais = new Set(volumes.map(chaveVol));
+  for (const seedV of SEED_VOLUMES) {
+    if (!chavesLocais.has(chaveVol(seedV))) {
+      volumes.push(seedV);
+      chavesLocais.add(chaveVol(seedV));
+      mudou = true;
+    }
+  }
+
+  // Mesma regra de "primeiro volume adicionado sobe o status" que já existe no
+  // formulário normal — precisa rodar aqui também, já que os volumes que chegaram
+  // pela sincronização não passam por aquele formulário.
+  const temVolume = {};
+  volumes.forEach(v => { temVolume[v.mangaId] = true; });
+  for (const manga of catalogo) {
+    if (temVolume[manga.id] && manga.statusCompra === "Não iniciado") {
+      manga.statusCompra = "Em andamento";
+      mudou = true;
+    }
+  }
+
+  if (mudou) {
+    saveCat();
+    saveVol();
+  }
+  localStorage.setItem("seedBuild", SEED_BUILD);
+})();
+
 let tab = "acervo";
 let selectedId = null;
 let activeVolume = null;      // número do volume cujo carimbo está aberto no cartão
