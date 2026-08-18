@@ -1715,14 +1715,8 @@ function statusTone(status){
   if (s.includes("cancel")) return {fg:"var(--wine)", bg:"var(--wine-wash)"};
   return {fg:"var(--tone-default-fg)", bg:"var(--tone-default-bg)"};
 }
-function saveCat(){
-  localStorage.setItem(STORE_KEY_CAT, JSON.stringify(catalogo));
-  if (logado && window.acervoCloud) window.acervoCloud.saveCatalogo(catalogo).catch(()=>showToast("Não foi possível salvar na nuvem."));
-}
-function saveVol(){
-  localStorage.setItem(STORE_KEY_VOL, JSON.stringify(volumes));
-  if (logado && window.acervoCloud) window.acervoCloud.saveVolumes(volumes).catch(()=>showToast("Não foi possível salvar na nuvem."));
-}
+function saveCat(){ localStorage.setItem(STORE_KEY_CAT, JSON.stringify(catalogo)); }
+function saveVol(){ localStorage.setItem(STORE_KEY_VOL, JSON.stringify(volumes)); }
 function nextId(){ return catalogo.length ? Math.max(...catalogo.map(m=>m.id))+1 : 1; }
 function volumesByManga(id){ return volumes.filter(v=>v.mangaId===id); }
 function showToast(msg){
@@ -1759,80 +1753,46 @@ document.addEventListener("click", (e)=>{
   if (wrap && !wrap.contains(e.target)) fecharMenu();
 });
 
-// Modo edição: agora exige entrar com a conta Google (via Firebase). A conveniência
-// de esconder as abas de edição continua igual, mas a proteção de verdade dos dados
-// fica nas regras do Firestore — só a conta configurada como dona consegue gravar.
-let logado = false;
-let usuarioLogado = null;
+// Modo edição: sem login, só a aba Acervo fica disponível (as outras ficam
+// escondidas). Isso é só uma conveniência de navegação para quem só vai olhar
+// o acervo — não é uma proteção real dos dados, já que este app não tem servidor
+// e cada visitante só edita a própria cópia local, nunca os seus dados de verdade.
+const SENHA_EDICAO = "manga2026";
+let logado = sessionStorage.getItem("acervo_logado") === "1";
 
 function atualizarBarraTabs(){
   document.querySelectorAll('.dropdown-item[data-tab]').forEach(b=>{
     b.style.display = logado ? "" : "none";
   });
-  document.getElementById("loginBtn").textContent = logado
-    ? `Sair (${usuarioLogado && (usuarioLogado.displayName || usuarioLogado.email) || "conta"})`
-    : "Entrar com Google";
+  document.getElementById("loginBtn").textContent = logado ? "Sair" : "Entrar";
 }
-async function mostrarLogin(){
+function mostrarLogin(){
   fecharMenu();
-  if (!window.acervoCloud) { showToast("Ainda carregando o login, tenta de novo em 1 segundo."); return; }
-  try {
-    const user = await window.acervoCloud.signIn();
-    usuarioLogado = user;
+  const senha = prompt("Senha para editar:");
+  if (senha === null) return;
+  if (senha === SENHA_EDICAO) {
     logado = true;
+    sessionStorage.setItem("acervo_logado", "1");
     atualizarBarraTabs();
-    showToast(`Bem-vinda, ${user.displayName || user.email}!`);
-  } catch (e) {
-    showToast("Não foi possível entrar com o Google.");
+    showToast("Modo edição ativado.");
+  } else {
+    showToast("Senha incorreta.");
   }
 }
-document.getElementById("loginBtn").addEventListener("click", async ()=>{
+document.getElementById("loginBtn").addEventListener("click", ()=>{
   if (logado) {
-    if (window.acervoCloud) await window.acervoCloud.signOutUser();
     logado = false;
-    usuarioLogado = null;
+    sessionStorage.removeItem("acervo_logado");
     if (tab !== "acervo") setTab("acervo");
     atualizarBarraTabs();
     fecharMenu();
-    showToast("Você saiu.");
+    showToast("Saiu do modo edição.");
   } else {
     mostrarLogin();
   }
 });
 atualizarBarraTabs();
 if (!logado && tab !== "acervo") tab = "acervo";
-
-// Sincronização com a nuvem (Firestore): ao carregar, se a pessoa estiver logada,
-// busca os dados salvos na nuvem e substitui os locais. Ao salvar (saveCat/saveVol),
-// além do celular/PC, envia pra nuvem também — assim qualquer aparelho logado com a
-// mesma conta vê a mesma coisa.
-function iniciarSincronizacaoNuvem(){
-  window.acervoCloud.onAuthChange(async (user) => {
-    usuarioLogado = user;
-    logado = !!user;
-    atualizarBarraTabs();
-    if (!user) return;
-    try {
-      const dados = await window.acervoCloud.loadData();
-      if (dados) {
-        catalogo = dados.catalogo;
-        volumes = dados.volumes;
-        localStorage.setItem(STORE_KEY_CAT, JSON.stringify(catalogo));
-        localStorage.setItem(STORE_KEY_VOL, JSON.stringify(volumes));
-        showToast("Dados sincronizados da nuvem.");
-        render();
-      } else {
-        // primeira vez: ainda não existe nada na nuvem, sobe o que já está aqui
-        window.acervoCloud.saveCatalogo(catalogo);
-        window.acervoCloud.saveVolumes(volumes);
-      }
-    } catch (e) {
-      showToast("Erro ao sincronizar com a nuvem.");
-    }
-  });
-}
-if (window.acervoCloud) iniciarSincronizacaoNuvem();
-else window.addEventListener("acervoCloudReady", iniciarSincronizacaoNuvem);
 
 // Tema claro/escuro: preferência salva no aparelho.
 function aplicarTema(t){
@@ -2619,60 +2579,6 @@ if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./sw.js").catch(() => {});
   });
 }
-</script>
-
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-  import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyCwNKoA4Hl_lXrIhUcR2VBav7qOGnSZWcM",
-    authDomain: "acervo-de-mangas.firebaseapp.com",
-    projectId: "acervo-de-mangas",
-    storageBucket: "acervo-de-mangas.firebasestorage.app",
-    messagingSenderId: "127140224012",
-    appId: "1:127140224012:web:65b956b9e13307987d6229",
-    measurementId: "G-N4EF0LLHCZ"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-  const provider = new GoogleAuthProvider();
-
-  window.acervoCloud = {
-    user: null,
-    async signIn() {
-      const result = await signInWithPopup(auth, provider);
-      return result.user;
-    },
-    async signOutUser() {
-      await signOut(auth);
-    },
-    onAuthChange(cb) {
-      onAuthStateChanged(auth, (user) => {
-        window.acervoCloud.user = user;
-        cb(user);
-      });
-    },
-    async loadData() {
-      const catSnap = await getDoc(doc(db, "acervo", "catalogo"));
-      const volSnap = await getDoc(doc(db, "acervo", "volumes"));
-      if (!catSnap.exists() || !volSnap.exists()) return null;
-      return {
-        catalogo: JSON.parse(catSnap.data().json),
-        volumes: JSON.parse(volSnap.data().json),
-      };
-    },
-    async saveCatalogo(catalogoArr) {
-      await setDoc(doc(db, "acervo", "catalogo"), { json: JSON.stringify(catalogoArr), atualizadoEm: new Date().toISOString() });
-    },
-    async saveVolumes(volumesArr) {
-      await setDoc(doc(db, "acervo", "volumes"), { json: JSON.stringify(volumesArr), atualizadoEm: new Date().toISOString() });
-    },
-  };
-  window.dispatchEvent(new CustomEvent("acervoCloudReady"));
 </script>
 </body>
 </html>
