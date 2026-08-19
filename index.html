@@ -1803,16 +1803,14 @@ document.getElementById("loginBtn").addEventListener("click", async ()=>{
 atualizarBarraTabs();
 if (!logado && tab !== "acervo") tab = "acervo";
 
-// Sincronização com a nuvem (Firestore): ao carregar, se a pessoa estiver logada,
-// busca os dados salvos na nuvem e substitui os locais. Ao salvar (saveCat/saveVol),
-// além do celular/PC, envia pra nuvem também — assim qualquer aparelho logado com a
-// mesma conta vê a mesma coisa.
+// Sincronização com a nuvem (Firestore): busca os dados salvos na nuvem sempre que
+// a página abre — com ou sem login, já que a leitura é pública. Só quem estiver
+// logada (com uma conta autorizada) consegue gravar de volta na nuvem.
 function iniciarSincronizacaoNuvem(){
   window.acervoCloud.onAuthChange(async (user) => {
     usuarioLogado = user;
     logado = !!user;
     atualizarBarraTabs();
-    if (!user) return;
     try {
       const dados = await window.acervoCloud.loadData();
       if (dados) {
@@ -1820,15 +1818,15 @@ function iniciarSincronizacaoNuvem(){
         volumes = dados.volumes;
         localStorage.setItem(STORE_KEY_CAT, JSON.stringify(catalogo));
         localStorage.setItem(STORE_KEY_VOL, JSON.stringify(volumes));
-        showToast("Dados sincronizados da nuvem.");
+        if (user) showToast("Dados sincronizados da nuvem.");
         render();
-      } else {
+      } else if (user) {
         // primeira vez: ainda não existe nada na nuvem, sobe o que já está aqui
         window.acervoCloud.saveCatalogo(catalogo);
         window.acervoCloud.saveVolumes(volumes);
       }
     } catch (e) {
-      showToast("Erro ao sincronizar com a nuvem.");
+      if (user) showToast("Erro ao sincronizar com a nuvem.");
     }
   });
 }
