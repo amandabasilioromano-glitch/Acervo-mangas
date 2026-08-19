@@ -1766,6 +1766,8 @@ document.addEventListener("click", (e)=>{
 // Modo edição: agora exige entrar com a conta Google (via Firebase). A conveniência
 // de esconder as abas de edição continua igual, mas a proteção de verdade dos dados
 // fica nas regras do Firestore — só a conta configurada como dona consegue gravar.
+// A mesma lista de UIDs precisa bater com a regra colada no Firestore.
+const UIDS_AUTORIZADOS = ["zghSDXemReVutbpBu6eLfvCWSTQ2", "YV3t1f6q3LdeXZH6FLxVZ97Xeuv2"];
 function atualizarBarraTabs(){
   document.querySelectorAll('.dropdown-item[data-tab]').forEach(b=>{
     b.style.display = logado ? "" : "none";
@@ -1779,6 +1781,14 @@ async function mostrarLogin(){
   if (!window.acervoCloud) { showToast("Ainda carregando o login, tenta de novo em 1 segundo."); return; }
   try {
     const user = await window.acervoCloud.signIn();
+    if (!UIDS_AUTORIZADOS.includes(user.uid)) {
+      await window.acervoCloud.signOutUser();
+      usuarioLogado = null;
+      logado = false;
+      atualizarBarraTabs();
+      showToast("Acesso não autorizado.");
+      return;
+    }
     usuarioLogado = user;
     logado = true;
     atualizarBarraTabs();
@@ -1808,8 +1818,17 @@ if (!logado && tab !== "acervo") tab = "acervo";
 // logada (com uma conta autorizada) consegue gravar de volta na nuvem.
 function iniciarSincronizacaoNuvem(){
   window.acervoCloud.onAuthChange(async (user) => {
+    const autorizado = user && UIDS_AUTORIZADOS.includes(user.uid);
+    if (user && !autorizado) {
+      // sessão de conta não autorizada (ex: aba já estava logada de antes) — desloga
+      await window.acervoCloud.signOutUser();
+      usuarioLogado = null; logado = false;
+      atualizarBarraTabs();
+      showToast("Acesso não autorizado.");
+      return;
+    }
     usuarioLogado = user;
-    logado = !!user;
+    logado = autorizado;
     atualizarBarraTabs();
     try {
       const dados = await window.acervoCloud.loadData();
@@ -1818,15 +1837,15 @@ function iniciarSincronizacaoNuvem(){
         volumes = dados.volumes;
         localStorage.setItem(STORE_KEY_CAT, JSON.stringify(catalogo));
         localStorage.setItem(STORE_KEY_VOL, JSON.stringify(volumes));
-        if (user) showToast("Dados sincronizados da nuvem.");
+        if (logado) showToast("Dados sincronizados da nuvem.");
         render();
-      } else if (user) {
+      } else if (logado) {
         // primeira vez: ainda não existe nada na nuvem, sobe o que já está aqui
         window.acervoCloud.saveCatalogo(catalogo);
         window.acervoCloud.saveVolumes(volumes);
       }
     } catch (e) {
-      if (user) showToast("Erro ao sincronizar com a nuvem.");
+      if (logado) showToast("Erro ao sincronizar com a nuvem.");
     }
   });
 }
