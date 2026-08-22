@@ -2007,7 +2007,7 @@ function renderAcervoList(){
           <div class="badge mono" style="color:${tone.fg}; background:${tone.bg};">${esc(m.statusCompra)||"—"}</div>
         </div>
         <div class="meta mono">${[m.editora,m.tipo,m.idioma].filter(Boolean).map(esc).join(" · ")}${
-          m.volumesTotal ? ` · ${uniqueOwned}/${m.volumesTotal} vol.` : (owned.length ? ` · ${uniqueOwned} vol. registrados` : "")
+          m.volumesTotal ? ` · ${uniqueOwned}/${m.volumesTotal - (m.volumeInicial || 1) + 1} vol.` : (owned.length ? ` · ${uniqueOwned} vol. registrados` : "")
         }</div>
       </div>
     </button>`;
@@ -2037,6 +2037,7 @@ function renderMangaCard(id){
   const ownedSet = new Set(owned.map(v=>Number(v.volume)));
   const volInicial = manga.volumeInicial || 1;
   const maxGrid = manga.volumesTotal || (owned.length ? Math.max(...owned.map(v=>Number(v.volume)||0)) : 0);
+  const qtdRealDeVolumes = manga.volumesTotal ? (manga.volumesTotal - volInicial + 1) : null;
 
   let html = `<button class="back-link mono" id="backBtn">← voltar ao acervo</button>`;
   const capa1 = manga.capas && manga.capas[1];
@@ -2059,7 +2060,9 @@ function renderMangaCard(id){
     html += field("Idioma", manga.idioma);
     html += field("Status", manga.status);
     html += field("Status da coleção", manga.statusCompra);
-    html += field("Volumes", manga.volumesTotal);
+    html += field("Volumes", qtdRealDeVolumes != null && qtdRealDeVolumes !== manga.volumesTotal
+      ? `${qtdRealDeVolumes} (numeração ${volInicial} a ${manga.volumesTotal})`
+      : manga.volumesTotal);
     if (manga.volumeInicial && manga.volumeInicial > 1) html += field("Volume inicial", manga.volumeInicial);
     html += field("Estante", manga.estante);
     html += field("Prateleira", manga.prateleira);
@@ -2068,7 +2071,7 @@ function renderMangaCard(id){
   }
 
   const qtdVariantes = owned.filter(v => v.variante).length;
-  html += `<div class="section-label mono">Volumes possuídos (${new Set(owned.map(v=>v.volume)).size}${manga.volumesTotal ? ` de ${manga.volumesTotal}` : ""}${qtdVariantes ? ` · ${qtdVariantes} variante${qtdVariantes>1?"s":""}` : ""})</div>`;
+  html += `<div class="section-label mono">Volumes possuídos (${new Set(owned.map(v=>v.volume)).size}${qtdRealDeVolumes ? ` de ${qtdRealDeVolumes}` : ""}${qtdVariantes ? ` · ${qtdVariantes} variante${qtdVariantes>1?"s":""}` : ""})</div>`;
   if (maxGrid > 0){
     html += `<div class="stamp-grid">`;
     for (let n=volInicial; n<=maxGrid; n++){
@@ -2553,7 +2556,8 @@ function renderEstatisticas(){
   for (const m of catalogo){
     if (!m.volumesTotal) continue;
     const owned = new Set(volumesByManga(m.id).map(v=>v.volume)).size;
-    if (owned >= m.volumesTotal) colecoesCompletas++;
+    const qtdReal = m.volumesTotal - (m.volumeInicial || 1) + 1;
+    if (owned >= qtdReal) colecoesCompletas++;
   }
 
   function barra(label, valor, total, extra){
