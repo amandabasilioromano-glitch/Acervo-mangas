@@ -376,8 +376,7 @@ const SEED_BUILD = "2026-08-22-01";
 })();
 
 // Padroniza a grafia da editora NewPOP (existiam "Newpop" e "NewPop" misturados).
-(function padronizarNewpop(){
-  if (localStorage.getItem("padronizarNewpopV1") === "1") { return; }
+function padronizarNewpop(){
   let mudou = false;
   for (const manga of catalogo) {
     const e = String(manga.editora || "");
@@ -386,7 +385,11 @@ const SEED_BUILD = "2026-08-22-01";
       mudou = true;
     }
   }
-  if (mudou) saveCat();
+  return mudou;
+}
+(function padronizarNewpopUmaVez(){
+  if (localStorage.getItem("padronizarNewpopV1") === "1") { return; }
+  if (padronizarNewpop()) saveCat();
   localStorage.setItem("padronizarNewpopV1", "1");
 })();
 
@@ -1850,8 +1853,12 @@ function iniciarSincronizacaoNuvem(){
       if (dados) {
         catalogo = dados.catalogo;
         volumes = dados.volumes;
+        // reaplica correções locais (ex: grafia de editora) em cima dos dados que
+        // vieram da nuvem, já que a nuvem pode ter sido salva antes dessas correções.
+        const corrigiuNewpop = padronizarNewpop();
         localStorage.setItem(STORE_KEY_CAT, JSON.stringify(catalogo));
         localStorage.setItem(STORE_KEY_VOL, JSON.stringify(volumes));
+        if (corrigiuNewpop && logado) window.acervoCloud.saveCatalogo(catalogo);
         if (logado) showToast("Dados sincronizados da nuvem.");
         render();
       } else if (logado) {
